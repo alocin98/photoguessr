@@ -227,7 +227,7 @@ defmodule PhotoguessrWeb.GameLive do
                 <p class="mt-2 text-sm text-slate-500">
                   High-resolution JPEG, PNG, or WebP up to 10MB. Only one photo per game is allowed.
                 </p>
-                <.live_file_input upload={@uploads.photo} />
+                <.live_file_input class="bg-slate-400 rounded p-2" upload={@uploads.photo} />
                 <div
                   :for={entry <- @uploads.photo.entries}
                   class="mt-6 w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm"
