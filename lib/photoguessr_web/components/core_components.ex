@@ -56,28 +56,35 @@ defmodule PhotoguessrWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="pointer-events-auto"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "relative flex w-full max-w-sm items-start gap-3 rounded-2xl border px-5 py-4 text-sm shadow-xl shadow-slate-900/30 backdrop-blur-sm transition",
+        flash_classes(@kind)
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+        <div class="mt-1 shrink-0">
+          <.icon :if={@kind == :info} name="hero-information-circle" class="size-5" />
+          <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5" />
+        </div>
+        <div class="space-y-1 pr-6">
           <p :if={@title} class="font-semibold">{@title}</p>
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="absolute right-3 top-3 rounded-full p-1 text-xs opacity-60 transition hover:opacity-100"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
     </div>
     """
   end
+
+  defp flash_classes(:info), do: "border-emerald-400/40 bg-emerald-500/15 text-emerald-50"
+  defp flash_classes(:error), do: "border-rose-500/45 bg-rose-500/15 text-rose-50"
 
   @doc """
   Renders a button with navigation support.
@@ -94,22 +101,27 @@ defmodule PhotoguessrWeb.CoreComponents do
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{
+      "primary" =>
+        "inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/40 transition hover:-translate-y-0.5 hover:bg-slate-700",
+      nil =>
+        "inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+    }
 
     assigns =
       assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
+        Map.fetch!(variants, assigns[:variant])
       end)
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@class} {@rest}>
+      <.link class={[@class]} {@rest}>
         {render_slot(@inner_block)}
       </.link>
       """
     else
       ~H"""
-      <button class={@class} {@rest}>
+      <button class={[@class]} {@rest}>
         {render_slot(@inner_block)}
       </button>
       """

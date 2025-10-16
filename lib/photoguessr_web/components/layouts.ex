@@ -35,40 +35,47 @@ defmodule PhotoguessrWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
+    <div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      <header class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-8 sm:px-10">
+        <a
+          href="/"
+          class="flex items-center gap-3 rounded-full bg-white/5 px-4 py-2 backdrop-blur-sm transition hover:bg-white/10"
+        >
+          <img
+            src={~p"/images/logo.svg"}
+            width="40"
+            height="40"
+            class="rounded-full bg-white/10 p-2"
+            alt="PhotoGuessr logo"
+          />
+          <div class="text-left">
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">PhotoGuessr</p>
+            <p class="text-xs text-slate-500">Phoenix v{Application.spec(:phoenix, :vsn)}</p>
+          </div>
         </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-    </header>
+        <nav class="flex items-center gap-4 text-xs font-semibold text-slate-300">
+          <a
+            href="https://hexdocs.pm/phoenix/overview.html"
+            class="rounded-full border border-white/10 px-3 py-2 transition hover:border-white/30 hover:text-white"
+          >
+            Phoenix Docs
+          </a>
+          <a
+            href="https://github.com/phoenixframework/phoenix"
+            class="rounded-full border border-white/10 px-3 py-2 transition hover:border-white/30 hover:text-white"
+          >
+            GitHub
+          </a>
+          <.theme_toggle />
+        </nav>
+      </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+      <main class="mx-auto w-full max-w-6xl px-6 pb-16 sm:px-10">
         {render_slot(@inner_block)}
-      </div>
-    </main>
+      </main>
 
-    <.flash_group flash={@flash} />
+      <.flash_group flash={@flash} />
+    </div>
     """
   end
 
@@ -84,33 +91,39 @@ defmodule PhotoguessrWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:error} flash={@flash} />
+    <div
+      id={@id}
+      aria-live="polite"
+      class="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center px-4"
+    >
+      <div class="flex w-full max-w-sm flex-col gap-3">
+        <.flash kind={:info} flash={@flash} />
+        <.flash kind={:error} flash={@flash} />
 
-      <.flash
-        id="client-error"
-        kind={:error}
-        title={gettext("We can't find the internet")}
-        phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
-        hidden
-      >
-        {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-      </.flash>
+        <.flash
+          id="client-error"
+          kind={:error}
+          title={gettext("We can't find the internet")}
+          phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
+          phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
+          hidden
+        >
+          {gettext("Attempting to reconnect")}
+          <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        </.flash>
 
-      <.flash
-        id="server-error"
-        kind={:error}
-        title={gettext("Something went wrong!")}
-        phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
-        hidden
-      >
-        {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-      </.flash>
+        <.flash
+          id="server-error"
+          kind={:error}
+          title={gettext("Something went wrong!")}
+          phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
+          phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
+          hidden
+        >
+          {gettext("Attempting to reconnect")}
+          <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+        </.flash>
+      </div>
     </div>
     """
   end
@@ -122,31 +135,27 @@ defmodule PhotoguessrWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
+    <div class="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-1 py-1 text-xs text-slate-300 backdrop-blur-sm">
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex items-center gap-1 rounded-full px-3 py-1 transition hover:bg-white/10 hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-80" /> System
       </button>
-
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex items-center gap-1 rounded-full px-3 py-1 transition hover:bg-white/10 hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sun-micro" class="size-4 opacity-80" /> Light
       </button>
-
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex items-center gap-1 rounded-full px-3 py-1 transition hover:bg-white/10 hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-moon-micro" class="size-4 opacity-80" /> Dark
       </button>
     </div>
     """

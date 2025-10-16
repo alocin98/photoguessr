@@ -12,6 +12,7 @@ defmodule Photoguessr.Application do
       Photoguessr.Repo,
       {DNSCluster, query: Application.get_env(:photoguessr, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Photoguessr.PubSub},
+      Photoguessr.GameServer,
       # Start a worker by calling: Photoguessr.Worker.start_link(arg)
       # {Photoguessr.Worker, arg},
       # Start to serve requests, typically the last entry

@@ -56,4 +56,3 @@ defmodule Photoguessr.PlayerIdentity do
     "#{adjective} #{noun}"
   end
 end
-

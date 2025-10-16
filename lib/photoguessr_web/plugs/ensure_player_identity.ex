@@ -43,4 +43,3 @@ defmodule PhotoguessrWeb.Plugs.EnsurePlayerIdentity do
     end
   end
 end
-
