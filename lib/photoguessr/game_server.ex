@@ -259,6 +259,7 @@ defmodule Photoguessr.GameServer do
         state.players,
         &Map.delete(&1, player_id)
       )
+
     {:noreply, new_state}
   end
 

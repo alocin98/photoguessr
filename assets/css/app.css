@@ -127,6 +127,8 @@
   position: absolute;
   width: 256px;
   height: 256px;
+  pointer-events: none;
+  transition: transform 160ms ease-out;
   will-change: transform;
   image-rendering: crisp-edges;
   image-rendering: pixelated;

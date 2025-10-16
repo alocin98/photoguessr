@@ -176,16 +176,16 @@ defmodule PhotoguessrWeb.GameLive do
                     </div>
                   </div>
                   <.icon name="hero-trophy" class={trophy_icon_class(index)} />
-                    <button
-                      :if={is_admin(@game, @player_id) && entry.id != @player_id}
-                      type="button"
-                      class="rounded-full bg-slate-700/60 p-2 text-slate-400 transition hover:bg-slate-700/80 hover:text-slate-200"
-                      phx-click="remove_player"
-                      phx-value-player-id={entry.id}
-                      title={"Remove #{entry.name} from game"}
-                    >
-                      <.icon name="hero-x-mark" class="size-4" />
-                    </button> 
+                  <button
+                    :if={is_admin(@game, @player_id) && entry.id != @player_id}
+                    type="button"
+                    class="rounded-full bg-slate-700/60 p-2 text-slate-400 transition hover:bg-slate-700/80 hover:text-slate-200"
+                    phx-click="remove_player"
+                    phx-value-player-id={entry.id}
+                    title={"Remove #{entry.name} from game"}
+                  >
+                    <.icon name="hero-x-mark" class="size-4" />
+                  </button>
                 </li>
               </ol>
             </aside>
@@ -217,7 +217,7 @@ defmodule PhotoguessrWeb.GameLive do
               <div
                 phx-drop-target={@uploads.photo.ref}
                 class={[
-                  "group relative flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center transition",
+                  "group relative flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center transition"
                 ]}
               >
                 <.icon name="hero-photo" class="size-10 text-slate-400 group-hover:text-slate-500" />
@@ -233,7 +233,7 @@ defmodule PhotoguessrWeb.GameLive do
                   class="mt-6 w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm"
                 >
                   <div class="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-                   <progress value={entry.progress} max="100"> {entry.progress}% </progress>
+                    <progress value={entry.progress} max="100">{entry.progress}% </progress>
                     <p class="text-sm font-semibold text-slate-700">{entry.client_name}</p>
 
                     <button
@@ -620,9 +620,9 @@ defmodule PhotoguessrWeb.GameLive do
   end
 
   @impl Phoenix.LiveView
-def handle_event("validate_submission", _params, socket) do
-  {:noreply, socket}
-end
+  def handle_event("validate_submission", _params, socket) do
+    {:noreply, socket}
+  end
 
   def handle_event("save_submission", _params, socket) do
     case ensure_photo_ready(socket) do
@@ -647,6 +647,7 @@ end
           lat: socket.assigns.submission_location.lat,
           lng: socket.assigns.submission_location.lng
         }
+
         IO.puts("Submission: #{inspect(submission)}")
 
         case GameServer.add_submission(socket.assigns.player_id, submission) do
@@ -948,7 +949,7 @@ end
     end) || "Host"
   end
 
-  defp is_admin(%{admin_id: admin_id}, id), do: id == admin_id 
+  defp is_admin(%{admin_id: admin_id}, id), do: id == admin_id
 
   defp scoreboard_title({:round, _, _}), do: "Current round"
   defp scoreboard_title({:reveal, _, _}), do: "Round scores"

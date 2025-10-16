@@ -43,6 +43,7 @@ class OSMView {
     this.guesses = Array.isArray(options.guesses) ? options.guesses : [];
     this.showControls = options.controls !== false;
     this.userHasInteracted = false;
+    this.wheelAccumulator = 0;
     this.onSelect = null;
     this.dragState = null;
     this.viewport = null;
@@ -111,6 +112,7 @@ class OSMView {
     zoomIn.setAttribute("aria-label", "Zoom in");
     zoomIn.addEventListener("click", () => {
       this.userHasInteracted = true;
+      this.wheelAccumulator = 0;
       this.adjustZoom(1);
     });
 
@@ -121,8 +123,17 @@ class OSMView {
     zoomOut.setAttribute("aria-label", "Zoom out");
     zoomOut.addEventListener("click", () => {
       this.userHasInteracted = true;
+      this.wheelAccumulator = 0;
       this.adjustZoom(-1);
     });
+
+    const stopPropagation = (event) => {
+      event.stopPropagation();
+    };
+    zoomIn.addEventListener("pointerdown", stopPropagation);
+    zoomIn.addEventListener("pointerup", stopPropagation);
+    zoomOut.addEventListener("pointerdown", stopPropagation);
+    zoomOut.addEventListener("pointerup", stopPropagation);
 
     wrapper.append(zoomIn, zoomOut);
     return wrapper;
@@ -215,6 +226,12 @@ class OSMView {
 
   handlePointerDown(event) {
     if (event.button !== 0) return;
+    if (
+      event.target.closest(".osm-controls") ||
+      event.target.closest(".osm-attribution")
+    ) {
+      return;
+    }
     this.el.setPointerCapture(event.pointerId);
     this.dragState = {
       id: event.pointerId,
@@ -280,8 +297,23 @@ class OSMView {
     };
 
     this.userHasInteracted = true;
-    const delta = event.deltaY > 0 ? -1 : 1;
-    this.adjustZoom(delta, focus);
+    const delta = normalizeWheelDelta(event);
+    if (delta === 0) return;
+
+    this.wheelAccumulator += delta;
+    const maxStepsPerFrame = 4;
+    let steps = 0;
+
+    while (Math.abs(this.wheelAccumulator) >= 1 && steps < maxStepsPerFrame) {
+      const step = this.wheelAccumulator > 0 ? -1 : 1;
+      const adjusted = this.adjustZoom(step, focus);
+      if (!adjusted) {
+        this.wheelAccumulator = 0;
+        break;
+      }
+      this.wheelAccumulator -= step;
+      steps += 1;
+    }
   }
 
   handleDoubleClick(event) {
@@ -293,13 +325,14 @@ class OSMView {
     };
 
     this.userHasInteracted = true;
+    this.wheelAccumulator = 0;
     const delta = event.shiftKey ? -1 : 1;
     this.adjustZoom(delta, focus);
   }
 
   adjustZoom(delta, focusPoint) {
     const targetZoom = clampZoom(this.zoom + delta);
-    if (targetZoom === this.zoom) return;
+    if (targetZoom === this.zoom) return false;
 
     const rect = this.el.getBoundingClientRect();
     const viewport = this.buildViewport(rect.width, rect.height);
@@ -320,6 +353,7 @@ class OSMView {
       pointToLatLng(centerPointX, centerPointY, this.zoom),
     );
     this.render();
+    return true;
   }
 
   cursorToLatLng(clientX, clientY) {
@@ -390,6 +424,7 @@ class OSMView {
           tile.alt = "";
           tile.decoding = "async";
           tile.loading = "lazy";
+          tile.draggable = false;
           tile.src = tileUrl(this.zoom, wrappedX, y);
           this.tileLayer.appendChild(tile);
         }
@@ -490,6 +525,16 @@ const clampLatLng = (coords) => {
     lat: clamp(coords.lat, MIN_LAT, MAX_LAT),
     lng: normalizeLng(coords.lng),
   };
+};
+
+const normalizeWheelDelta = (event) => {
+  let delta = event.deltaY;
+  if (event.deltaMode === 1) {
+    delta *= 20;
+  } else if (event.deltaMode === 2) {
+    delta *= 60;
+  }
+  return delta / 240;
 };
 
 const normalizeLng = (lng) => {
