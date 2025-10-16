@@ -44,5 +44,5 @@ ENV SHELL=/bin/bash
 COPY --from=build /app/_build/prod/rel/* ./
 
 # Start command
-CMD ["bin/kittsch", "start"]
+CMD ["bin/photoguessr", "start"]
 

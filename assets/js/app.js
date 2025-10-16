@@ -170,7 +170,10 @@ class OSMView {
 
     if (typeof options.zoom === "number" && Number.isFinite(options.zoom)) {
       const nextZoom = clampZoom(options.zoom);
-      if (nextZoom !== this.zoom) {
+      if (
+        nextZoom !== this.zoom &&
+        (!this.userHasInteracted || modeChanged)
+      ) {
         this.zoom = nextZoom;
       }
     }
@@ -280,6 +283,7 @@ class OSMView {
     if (!moved && this.onSelect && this.mode !== "reveal") {
       const coords = this.cursorToLatLng(clientX, clientY);
       if (coords) {
+        this.userHasInteracted = true;
         this.onSelect({
           lat: Number(coords.lat.toFixed(6)),
           lng: Number(coords.lng.toFixed(6)),
