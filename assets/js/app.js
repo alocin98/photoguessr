@@ -614,56 +614,74 @@ const isFiniteLatLng = (coords) =>
 
 const hooks = {
   ...colocatedHooks,
-
   WorldMap: {
     mounted() {
-      const options = this.extractOptions();
-      if (options.zoom === undefined) {
-        options.zoom = 2;
+      const opts = this.extractOptions();
+
+      this.map = L.map(this.el, {
+        center: opts.center || [20, 0],
+        zoom: opts.zoom || 2,
+        zoomControl: true,
+        attributionControl: true,
+      });
+
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        minZoom: 2,
+        attribution:
+          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(this.map);
+
+      // Add marker
+      if (opts.marker) {
+        this.marker = L.marker([opts.marker.lat, opts.marker.lng]).addTo(
+          this.map,
+        );
       }
-      this.map = new OSMView(this.el, options);
-      this.map.setSelectHandler((coords) => {
-        if (this.map.mode === "submission") {
+
+      // Click handler for selecting location
+      this.map.on("click", (e) => {
+        const coords = { lat: e.latlng.lat, lng: e.latlng.lng };
+        if (opts.mode === "submission") {
           this.pushEvent("set_submission_location", coords);
-        } else if (this.map.mode === "guess") {
+        } else if (opts.mode === "guess") {
           this.pushEvent("set_guess_location", coords);
         }
       });
     },
 
     updated() {
+      const opts = this.extractOptions();
       if (!this.map) return;
-      this.map.update(this.extractOptions());
+
+      if (opts.marker) {
+        if (!this.marker) {
+          this.marker = L.marker([opts.marker.lat, opts.marker.lng]).addTo(
+            this.map,
+          );
+        } else {
+          this.marker.setLatLng([opts.marker.lat, opts.marker.lng]);
+        }
+      }
     },
 
     destroyed() {
       if (this.map) {
-        this.map.destroy();
+        this.map.remove();
         this.map = null;
       }
     },
 
     extractOptions() {
       const dataset = this.el.dataset;
-      const marker = parseLatLng(dataset.markerLat, dataset.markerLng);
-      const actual = parseLatLng(dataset.actualLat, dataset.actualLng);
-      const center = parseLatLng(dataset.centerLat, dataset.centerLng);
-      const zoom =
-        dataset.zoom === undefined ? undefined : parseZoom(dataset.zoom, 2);
-      const controls =
-        dataset.controls === undefined
-          ? undefined
-          : parseBoolean(dataset.controls, true);
-
+      const parseNum = (n) => (n ? parseFloat(n) : null);
+      const parseLatLng = (lat, lng) =>
+        lat && lng ? { lat: parseNum(lat), lng: parseNum(lng) } : null;
       return {
         mode: dataset.mode || "submission",
-        playerId: dataset.playerId || null,
-        marker,
-        actual,
-        guesses: parseGuesses(dataset.guesses),
-        center,
-        zoom,
-        controls,
+        marker: parseLatLng(dataset.markerLat, dataset.markerLng),
+        center: parseLatLng(dataset.centerLat, dataset.centerLng),
+        zoom: dataset.zoom ? parseInt(dataset.zoom) : 2,
       };
     },
   },
