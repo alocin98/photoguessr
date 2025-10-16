@@ -18,378 +18,441 @@
 // To load it, simply add a second `<link>` to your `root.html.heex` file.
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
-import "phoenix_html"
+import "phoenix_html";
 // Establish Phoenix Socket and LiveView configuration.
-import {Socket} from "phoenix"
-import {LiveSocket} from "phoenix_live_view"
-import {hooks as colocatedHooks} from "phoenix-colocated/photoguessr"
-import topbar from "../vendor/topbar"
+import { Socket } from "phoenix";
+import { LiveSocket } from "phoenix_live_view";
+import { hooks as colocatedHooks } from "phoenix-colocated/photoguessr";
+import topbar from "../vendor/topbar";
 
-const TILE_SIZE = 256
-const MIN_LAT = -85.05112878
-const MAX_LAT = 85.05112878
-const MIN_ZOOM = 2
-const MAX_ZOOM = 18
-const DEFAULT_CENTER = {lat: 20, lng: 0}
+const TILE_SIZE = 256;
+const MIN_LAT = -85.05112878;
+const MAX_LAT = 85.05112878;
+const MIN_ZOOM = 2;
+const MAX_ZOOM = 18;
+const DEFAULT_CENTER = { lat: 20, lng: 0 };
 
 class OSMView {
   constructor(element, options = {}) {
-    this.el = element
-    this.mode = options.mode || "submission"
-    this.playerId = options.playerId || null
-    this.zoom = clampZoom(options.zoom ?? 2)
-    this.marker = options.marker ?? null
-    this.actual = options.actual ?? null
-    this.guesses = Array.isArray(options.guesses) ? options.guesses : []
-    this.showControls = options.controls !== false
-    this.userHasInteracted = false
-    this.onSelect = null
-    this.dragState = null
-    this.viewport = null
-    this.rafId = null
+    this.el = element;
+    this.mode = options.mode || "submission";
+    this.playerId = options.playerId || null;
+    this.zoom = clampZoom(options.zoom ?? 2);
+    this.marker = options.marker ?? null;
+    this.actual = options.actual ?? null;
+    this.guesses = Array.isArray(options.guesses) ? options.guesses : [];
+    this.showControls = options.controls !== false;
+    this.userHasInteracted = false;
+    this.onSelect = null;
+    this.dragState = null;
+    this.viewport = null;
+    this.rafId = null;
 
-    this.center = clampLatLng(options.center || this.marker || this.actual || DEFAULT_CENTER)
+    this.center = clampLatLng(
+      options.center || this.marker || this.actual || DEFAULT_CENTER,
+    );
 
-    this.el.classList.add("osm-root")
-    const style = getComputedStyle(this.el)
+    this.el.classList.add("osm-root");
+    const style = getComputedStyle(this.el);
     if (style.position === "static") {
-      this.el.style.position = "relative"
+      this.el.style.position = "relative";
     }
-    this.el.style.backgroundColor ||= "rgb(4 13 33)"
-    this.el.style.touchAction = "none"
+    this.el.style.backgroundColor ||= "rgb(4 13 33)";
+    this.el.style.touchAction = "none";
 
-    this.tileLayer = document.createElement("div")
-    this.tileLayer.className = "osm-tile-layer"
+    // Prevent browser default drag/scroll/selection behavior
+    this.el.style.userSelect = "none";
+    this.el.addEventListener("dragstart", (e) => e.preventDefault());
+    this.el.addEventListener("gesturestart", (e) => e.preventDefault()); // for Safari pinch zoom
+    this.el.addEventListener("contextmenu", (e) => e.preventDefault()); // optional: disable right-click map menu
 
-    this.markerLayer = document.createElement("div")
-    this.markerLayer.className = "osm-marker-layer"
+    this.tileLayer = document.createElement("div");
+    this.tileLayer.className = "osm-tile-layer";
 
-    this.controls = this.createControls()
-    this.attribution = this.createAttribution()
+    this.markerLayer = document.createElement("div");
+    this.markerLayer.className = "osm-marker-layer";
 
-    this.el.innerHTML = ""
-    this.el.append(this.tileLayer, this.markerLayer, this.controls, this.attribution)
-    this.updateControlsVisibility()
+    this.controls = this.createControls();
+    this.attribution = this.createAttribution();
 
-    this.pointerDownHandler = event => this.handlePointerDown(event)
-    this.pointerMoveHandler = event => this.handlePointerMove(event)
-    this.pointerUpHandler = event => this.handlePointerUp(event)
-    this.pointerCancelHandler = event => this.handlePointerUp(event)
-    this.wheelHandler = event => this.handleWheel(event)
-    this.doubleClickHandler = event => this.handleDoubleClick(event)
+    this.el.innerHTML = "";
+    this.el.append(
+      this.tileLayer,
+      this.markerLayer,
+      this.controls,
+      this.attribution,
+    );
+    this.updateControlsVisibility();
 
-    this.el.addEventListener("pointerdown", this.pointerDownHandler)
-    this.el.addEventListener("pointermove", this.pointerMoveHandler)
-    this.el.addEventListener("pointerup", this.pointerUpHandler)
-    this.el.addEventListener("pointercancel", this.pointerCancelHandler)
-    this.el.addEventListener("wheel", this.wheelHandler, {passive: false})
-    this.el.addEventListener("dblclick", this.doubleClickHandler)
+    this.pointerDownHandler = (event) => this.handlePointerDown(event);
+    this.pointerMoveHandler = (event) => this.handlePointerMove(event);
+    this.pointerUpHandler = (event) => this.handlePointerUp(event);
+    this.pointerCancelHandler = (event) => this.handlePointerUp(event);
+    this.wheelHandler = (event) => this.handleWheel(event);
+    this.doubleClickHandler = (event) => this.handleDoubleClick(event);
+
+    this.el.addEventListener("pointerdown", this.pointerDownHandler);
+    this.el.addEventListener("pointermove", this.pointerMoveHandler);
+    this.el.addEventListener("pointerup", this.pointerUpHandler);
+    this.el.addEventListener("pointercancel", this.pointerCancelHandler);
+    this.el.addEventListener("wheel", this.wheelHandler, { passive: false });
+    this.el.addEventListener("dblclick", this.doubleClickHandler);
 
     if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.render())
-      this.resizeObserver.observe(this.el)
+      this.resizeObserver = new ResizeObserver(() => this.render());
+      this.resizeObserver.observe(this.el);
     }
 
-    this.render()
+    this.render();
   }
 
   createControls() {
-    const wrapper = document.createElement("div")
-    wrapper.className = "osm-controls"
+    const wrapper = document.createElement("div");
+    wrapper.className = "osm-controls";
 
-    const zoomIn = document.createElement("button")
-    zoomIn.type = "button"
-    zoomIn.className = "osm-control-btn"
-    zoomIn.textContent = "+"
-    zoomIn.setAttribute("aria-label", "Zoom in")
+    // Prevent clicks from bubbling to map
+    wrapper.addEventListener("pointerdown", (e) => e.stopPropagation());
+    wrapper.addEventListener("click", (e) => e.stopPropagation());
+
+    const zoomIn = document.createElement("button");
+    zoomIn.type = "button";
+    zoomIn.className = "osm-control-btn";
+    zoomIn.textContent = "+";
+    zoomIn.setAttribute("aria-label", "Zoom in");
     zoomIn.addEventListener("click", () => {
-      this.userHasInteracted = true
-      this.adjustZoom(1)
-    })
+      this.userHasInteracted = true;
+      this.adjustZoom(1);
+    });
 
-    const zoomOut = document.createElement("button")
-    zoomOut.type = "button"
-    zoomOut.className = "osm-control-btn"
-    zoomOut.textContent = "-"
-    zoomOut.setAttribute("aria-label", "Zoom out")
+    const zoomOut = document.createElement("button");
+    zoomOut.type = "button";
+    zoomOut.className = "osm-control-btn";
+    zoomOut.textContent = "-";
+    zoomOut.setAttribute("aria-label", "Zoom out");
     zoomOut.addEventListener("click", () => {
-      this.userHasInteracted = true
-      this.adjustZoom(-1)
-    })
+      this.userHasInteracted = true;
+      this.adjustZoom(-1);
+    });
 
-    wrapper.append(zoomIn, zoomOut)
-    return wrapper
+    wrapper.append(zoomIn, zoomOut);
+    return wrapper;
   }
 
   createAttribution() {
-    const attribution = document.createElement("div")
-    attribution.className = "osm-attribution"
+    const attribution = document.createElement("div");
+    attribution.className = "osm-attribution";
     attribution.innerHTML =
-      '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
-    return attribution
+      '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+    return attribution;
   }
 
   updateControlsVisibility() {
-    this.controls.style.display = this.showControls ? "flex" : "none"
+    this.controls.style.display = this.showControls ? "flex" : "none";
   }
 
   setSelectHandler(callback) {
-    this.onSelect = callback
+    this.onSelect = callback;
   }
 
   update(options = {}) {
-    const modeChanged = options.mode && options.mode !== this.mode
+    const modeChanged = options.mode && options.mode !== this.mode;
     if (modeChanged) {
-      this.mode = options.mode
-      this.userHasInteracted = false
+      this.mode = options.mode;
+      this.userHasInteracted = false;
     } else if (options.mode) {
-      this.mode = options.mode
+      this.mode = options.mode;
     }
 
     if (options.playerId !== undefined) {
-      this.playerId = options.playerId
+      this.playerId = options.playerId;
     }
 
     if (typeof options.zoom === "number" && Number.isFinite(options.zoom)) {
-      const nextZoom = clampZoom(options.zoom)
+      const nextZoom = clampZoom(options.zoom);
       if (nextZoom !== this.zoom) {
-        this.zoom = nextZoom
+        this.zoom = nextZoom;
       }
     }
 
     if ("marker" in options) {
-      this.marker = options.marker
+      this.marker = options.marker;
     }
 
     if ("actual" in options) {
-      this.actual = options.actual
+      this.actual = options.actual;
     }
 
     if ("guesses" in options) {
-      this.guesses = Array.isArray(options.guesses) ? options.guesses : []
+      this.guesses = Array.isArray(options.guesses) ? options.guesses : [];
     }
 
     if ("controls" in options) {
-      this.showControls = options.controls !== false
-      this.updateControlsVisibility()
+      this.showControls = options.controls !== false;
+      this.updateControlsVisibility();
     }
 
     if (options.center && (!this.userHasInteracted || modeChanged)) {
-      this.center = clampLatLng(options.center)
+      this.center = clampLatLng(options.center);
     }
 
-    this.render()
+    this.render();
   }
 
   destroy() {
     if (this.rafId) {
-      cancelAnimationFrame(this.rafId)
-      this.rafId = null
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
 
     if (this.resizeObserver) {
-      this.resizeObserver.disconnect()
+      this.resizeObserver.disconnect();
     }
 
-    this.el.removeEventListener("pointerdown", this.pointerDownHandler)
-    this.el.removeEventListener("pointermove", this.pointerMoveHandler)
-    this.el.removeEventListener("pointerup", this.pointerUpHandler)
-    this.el.removeEventListener("pointercancel", this.pointerCancelHandler)
-    this.el.removeEventListener("wheel", this.wheelHandler)
-    this.el.removeEventListener("dblclick", this.doubleClickHandler)
+    this.el.removeEventListener("pointerdown", this.pointerDownHandler);
+    this.el.removeEventListener("pointermove", this.pointerMoveHandler);
+    this.el.removeEventListener("pointerup", this.pointerUpHandler);
+    this.el.removeEventListener("pointercancel", this.pointerCancelHandler);
+    this.el.removeEventListener("wheel", this.wheelHandler);
+    this.el.removeEventListener("dblclick", this.doubleClickHandler);
 
-    this.tileLayer.remove()
-    this.markerLayer.remove()
-    this.controls.remove()
-    this.attribution.remove()
-    this.el.classList.remove("osm-root", "is-dragging")
-    this.el.textContent = ""
+    this.tileLayer.remove();
+    this.markerLayer.remove();
+    this.controls.remove();
+    this.attribution.remove();
+    this.el.classList.remove("osm-root", "is-dragging");
+    this.el.textContent = "";
   }
 
   handlePointerDown(event) {
-    if (event.button !== 0) return
-    this.el.setPointerCapture(event.pointerId)
+    if (event.button !== 0) return;
+    this.el.setPointerCapture(event.pointerId);
     this.dragState = {
       id: event.pointerId,
-      origin: {x: event.clientX, y: event.clientY},
-      centerSnapshot: {...this.center},
+      origin: { x: event.clientX, y: event.clientY },
+      centerSnapshot: { ...this.center },
       moved: false,
-    }
-    this.el.classList.add("is-dragging")
+    };
+    this.el.classList.add("is-dragging");
   }
 
   handlePointerMove(event) {
-    if (!this.dragState || event.pointerId !== this.dragState.id) return
-
-    const dx = event.clientX - this.dragState.origin.x
-    const dy = event.clientY - this.dragState.origin.y
+    if (!this.dragState || event.pointerId !== this.dragState.id) return;
+    const dx = event.clientX - this.dragState.origin.x;
+    const dy = event.clientY - this.dragState.origin.y;
 
     if (!this.dragState.moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
-      this.dragState.moved = true
+      this.dragState.moved = true;
     }
+    if (!this.dragState.moved) return;
 
-    if (!this.dragState.moved) return
+    this.userHasInteracted = true;
 
-    this.userHasInteracted = true
-
-    const startPoint = latLngToPoint(this.dragState.centerSnapshot.lat, this.dragState.centerSnapshot.lng, this.zoom)
-    const targetPoint = {x: startPoint.x - dx, y: startPoint.y - dy}
-    this.center = clampLatLng(pointToLatLng(targetPoint.x, targetPoint.y, this.zoom))
-    this.render()
+    if (this._nextMoveFrame) return;
+    this._nextMoveFrame = requestAnimationFrame(() => {
+      this._nextMoveFrame = null;
+      const startPoint = latLngToPoint(
+        this.dragState.centerSnapshot.lat,
+        this.dragState.centerSnapshot.lng,
+        this.zoom,
+      );
+      const targetPoint = { x: startPoint.x - dx, y: startPoint.y - dy };
+      this.center = clampLatLng(
+        pointToLatLng(targetPoint.x, targetPoint.y, this.zoom),
+      );
+      this.render();
+    });
   }
 
   handlePointerUp(event) {
-    if (!this.dragState || event.pointerId !== this.dragState.id) return
-    this.el.releasePointerCapture(event.pointerId)
+    if (!this.dragState || event.pointerId !== this.dragState.id) return;
+    this.el.releasePointerCapture(event.pointerId);
 
-    const moved = this.dragState.moved
-    const {clientX, clientY} = event
-    this.dragState = null
-    this.el.classList.remove("is-dragging")
+    const moved = this.dragState.moved;
+    const { clientX, clientY } = event;
+    this.dragState = null;
+    this.el.classList.remove("is-dragging");
 
     if (!moved && this.onSelect && this.mode !== "reveal") {
-      const coords = this.cursorToLatLng(clientX, clientY)
+      const coords = this.cursorToLatLng(clientX, clientY);
       if (coords) {
         this.onSelect({
           lat: Number(coords.lat.toFixed(6)),
           lng: Number(coords.lng.toFixed(6)),
-        })
+        });
       }
     }
   }
 
   handleWheel(event) {
-    event.preventDefault()
-    const rect = this.el.getBoundingClientRect()
+    event.preventDefault();
+
+    // Throttle zoom updates
+    const now = performance.now();
+    if (this._lastWheel && now - this._lastWheel < 200) return;
+    this._lastWheel = now;
+
+    const rect = this.el.getBoundingClientRect();
     const focus = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
-    }
+    };
 
-    this.userHasInteracted = true
-    const delta = event.deltaY > 0 ? -1 : 1
-    this.adjustZoom(delta, focus)
+    this.userHasInteracted = true;
+
+    // Normalize delta across browsers (trackpad, mouse)
+    const deltaY = event.deltaY;
+    const delta = deltaY > 40 ? -1 : deltaY < -40 ? 1 : deltaY > 0 ? -1 : 1;
+
+    // Smooth transition
+    this.animateZoom(delta, focus);
+  }
+
+  animateZoom(delta, focusPoint) {
+    const startZoom = this.zoom;
+    const endZoom = clampZoom(startZoom + delta);
+    if (startZoom === endZoom) return;
+
+    const duration = 250; // ms
+    const startTime = performance.now();
+
+    const animate = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = t * (2 - t); // easeOutQuad
+      const currentZoom = startZoom + (endZoom - startZoom) * eased;
+      this.zoom = currentZoom;
+      this.adjustZoom(0, focusPoint); // Re-render without re-clamping zoom
+      if (t < 1) requestAnimationFrame(animate);
+      else this.zoom = endZoom; // finalize integer zoom level
+    };
+
+    requestAnimationFrame(animate);
   }
 
   handleDoubleClick(event) {
-    event.preventDefault()
-    const rect = this.el.getBoundingClientRect()
+    event.preventDefault();
+    const rect = this.el.getBoundingClientRect();
     const focus = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
-    }
+    };
 
-    this.userHasInteracted = true
-    const delta = event.shiftKey ? -1 : 1
-    this.adjustZoom(delta, focus)
+    this.userHasInteracted = true;
+    const delta = event.shiftKey ? -1 : 1;
+    this.adjustZoom(delta, focus);
   }
 
   adjustZoom(delta, focusPoint) {
-    const targetZoom = clampZoom(this.zoom + delta)
-    if (targetZoom === this.zoom) return
+    const targetZoom = clampZoom(this.zoom + delta);
+    if (targetZoom === this.zoom) return;
 
-    const rect = this.el.getBoundingClientRect()
-    const viewport = this.buildViewport(rect.width, rect.height)
-    const focus = focusPoint || {x: rect.width / 2, y: rect.height / 2}
-    const worldX = viewport.topLeftX + focus.x
-    const worldY = viewport.topLeftY + focus.y
-    const focusLatLng = pointToLatLng(worldX, worldY, this.zoom)
+    const rect = this.el.getBoundingClientRect();
+    const viewport = this.buildViewport(rect.width, rect.height);
+    const focus = focusPoint || { x: rect.width / 2, y: rect.height / 2 };
+    const worldX = viewport.topLeftX + focus.x;
+    const worldY = viewport.topLeftY + focus.y;
+    const focusLatLng = pointToLatLng(worldX, worldY, this.zoom);
 
-    this.zoom = targetZoom
+    this.zoom = targetZoom;
 
-    const newPoint = latLngToPoint(focusLatLng.lat, focusLatLng.lng, this.zoom)
-    const newTopLeftX = newPoint.x - focus.x
-    const newTopLeftY = newPoint.y - focus.y
-    const centerPointX = newTopLeftX + rect.width / 2
-    const centerPointY = newTopLeftY + rect.height / 2
+    const newPoint = latLngToPoint(focusLatLng.lat, focusLatLng.lng, this.zoom);
+    const newTopLeftX = newPoint.x - focus.x;
+    const newTopLeftY = newPoint.y - focus.y;
+    const centerPointX = newTopLeftX + rect.width / 2;
+    const centerPointY = newTopLeftY + rect.height / 2;
 
-    this.center = clampLatLng(pointToLatLng(centerPointX, centerPointY, this.zoom))
-    this.render()
+    this.center = clampLatLng(
+      pointToLatLng(centerPointX, centerPointY, this.zoom),
+    );
+    this.render();
   }
 
   cursorToLatLng(clientX, clientY) {
-    if (!this.viewport) return null
-    const rect = this.el.getBoundingClientRect()
-    const x = clientX - rect.left
-    const y = clientY - rect.top
+    if (!this.viewport) return null;
+    const rect = this.el.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
-    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
 
-    const worldX = this.viewport.topLeftX + x
-    const worldY = this.viewport.topLeftY + y
-    return clampLatLng(pointToLatLng(worldX, worldY, this.zoom))
+    const worldX = this.viewport.topLeftX + x;
+    const worldY = this.viewport.topLeftY + y;
+    return clampLatLng(pointToLatLng(worldX, worldY, this.zoom));
   }
 
   buildViewport(width, height) {
-    const w = width || this.el.clientWidth || 1
-    const h = height || this.el.clientHeight || 1
-    const centerPoint = latLngToPoint(this.center.lat, this.center.lng, this.zoom)
-    const topLeftX = centerPoint.x - w / 2
-    const topLeftY = centerPoint.y - h / 2
-    return {width: w, height: h, topLeftX, topLeftY, centerPoint}
+    const w = width || this.el.clientWidth || 1;
+    const h = height || this.el.clientHeight || 1;
+    const centerPoint = latLngToPoint(
+      this.center.lat,
+      this.center.lng,
+      this.zoom,
+    );
+    const topLeftX = centerPoint.x - w / 2;
+    const topLeftY = centerPoint.y - h / 2;
+    return { width: w, height: h, topLeftX, topLeftY, centerPoint };
   }
 
   render() {
     if (this.rafId) {
-      cancelAnimationFrame(this.rafId)
+      cancelAnimationFrame(this.rafId);
     }
-    this.rafId = requestAnimationFrame(() => this.renderNow())
+    this.rafId = requestAnimationFrame(() => this.renderNow());
   }
 
   renderNow() {
-    this.rafId = null
-    const rect = this.el.getBoundingClientRect()
-    const viewport = this.buildViewport(rect.width, rect.height)
-    this.viewport = viewport
-    this.renderTiles(viewport)
-    this.renderMarkers(viewport)
+    this.rafId = null;
+    const rect = this.el.getBoundingClientRect();
+    const viewport = this.buildViewport(rect.width, rect.height);
+    this.viewport = viewport;
+    this.renderTiles(viewport);
+    this.renderMarkers(viewport);
   }
 
   renderTiles(viewport) {
-    const tilesNeeded = new Set()
-    const startX = Math.floor(viewport.topLeftX / TILE_SIZE)
-    const endX = Math.floor((viewport.topLeftX + viewport.width) / TILE_SIZE)
-    const startY = Math.floor(viewport.topLeftY / TILE_SIZE)
-    const endY = Math.floor((viewport.topLeftY + viewport.height) / TILE_SIZE)
-    const maxIndex = 2 ** this.zoom
+    const tilesNeeded = new Set();
+    const startX = Math.floor(viewport.topLeftX / TILE_SIZE);
+    const endX = Math.floor((viewport.topLeftX + viewport.width) / TILE_SIZE);
+    const startY = Math.floor(viewport.topLeftY / TILE_SIZE);
+    const endY = Math.floor((viewport.topLeftY + viewport.height) / TILE_SIZE);
+    const maxIndex = 2 ** this.zoom;
 
     for (let x = startX; x <= endX; x += 1) {
-      const wrappedX = wrapTileIndex(x, this.zoom)
+      const wrappedX = wrapTileIndex(x, this.zoom);
       for (let y = startY; y <= endY; y += 1) {
-        if (y < 0 || y >= maxIndex) continue
+        if (y < 0 || y >= maxIndex) continue;
 
-        const left = x * TILE_SIZE - viewport.topLeftX
-        const top = y * TILE_SIZE - viewport.topLeftY
-        const key = `${this.zoom}-${wrappedX}-${y}`
-        tilesNeeded.add(key)
+        const left = x * TILE_SIZE - viewport.topLeftX;
+        const top = y * TILE_SIZE - viewport.topLeftY;
+        const key = `${this.zoom}-${wrappedX}-${y}`;
+        tilesNeeded.add(key);
 
-        let tile = this.tileLayer.querySelector(`[data-key="${key}"]`)
+        let tile = this.tileLayer.querySelector(`[data-key="${key}"]`);
         if (!tile) {
-          tile = document.createElement("img")
-          tile.dataset.key = key
-          tile.className = "osm-tile"
-          tile.alt = ""
-          tile.decoding = "async"
-          tile.loading = "lazy"
-          tile.src = tileUrl(this.zoom, wrappedX, y)
-          this.tileLayer.appendChild(tile)
+          tile = document.createElement("img");
+          tile.dataset.key = key;
+          tile.className = "osm-tile";
+          tile.alt = "";
+          tile.decoding = "async";
+          tile.loading = "lazy";
+          tile.src = tileUrl(this.zoom, wrappedX, y);
+          this.tileLayer.appendChild(tile);
         }
 
-        tile.style.transform = `translate(${left}px, ${top}px)`
+        tile.style.transform = `translate(${left}px, ${top}px)`;
       }
     }
 
-    Array.from(this.tileLayer.children).forEach(node => {
+    Array.from(this.tileLayer.children).forEach((node) => {
       if (!tilesNeeded.has(node.dataset.key)) {
-        node.remove()
+        node.remove();
       }
-    })
+    });
   }
 
   renderMarkers(viewport) {
-    this.markerLayer.innerHTML = ""
+    this.markerLayer.innerHTML = "";
 
-    const markers = []
+    const markers = [];
 
     if (this.mode === "reveal") {
       if (isFiniteLatLng(this.actual)) {
@@ -399,14 +462,15 @@ class OSMView {
           type: "actual",
           title: "Actual location",
           label: "Actual",
-        })
+        });
       }
 
       this.guesses
-        .filter(guess => isFiniteLatLng(guess))
-        .forEach(guess => {
-          const isCurrentPlayer = this.playerId && guess.player_id === this.playerId
-          const hasPoints = Number.isFinite(guess.points)
+        .filter((guess) => isFiniteLatLng(guess))
+        .forEach((guess) => {
+          const isCurrentPlayer =
+            this.playerId && guess.player_id === this.playerId;
+          const hasPoints = Number.isFinite(guess.points);
 
           markers.push({
             lat: guess.lat,
@@ -416,171 +480,180 @@ class OSMView {
               ? `${guess.player_name}${hasPoints ? ` • ${guess.points} pts` : ""}`
               : undefined,
             label: hasPoints ? `${guess.points} pts` : undefined,
-          })
-        })
+          });
+        });
     } else if (isFiniteLatLng(this.marker)) {
       markers.push({
         lat: this.marker.lat,
         lng: this.marker.lng,
         type: this.mode === "guess" ? "self" : "primary",
         title: this.mode === "guess" ? "Your guess" : "Selected location",
-      })
+      });
     }
 
-    markers.forEach(marker => {
-      const point = latLngToPoint(marker.lat, marker.lng, this.zoom)
-      const left = point.x - viewport.topLeftX
-      const top = point.y - viewport.topLeftY
+    markers.forEach((marker) => {
+      const point = latLngToPoint(marker.lat, marker.lng, this.zoom);
+      const left = point.x - viewport.topLeftX;
+      const top = point.y - viewport.topLeftY;
 
-      if (left < -60 || left > viewport.width + 60 || top < -60 || top > viewport.height + 60) {
-        return
+      if (
+        left < -60 ||
+        left > viewport.width + 60 ||
+        top < -60 ||
+        top > viewport.height + 60
+      ) {
+        return;
       }
 
-      const markerEl = document.createElement("div")
-      markerEl.className = `osm-marker osm-marker--${marker.type}`
-      markerEl.style.left = `${left}px`
-      markerEl.style.top = `${top}px`
+      const markerEl = document.createElement("div");
+      markerEl.className = `osm-marker osm-marker--${marker.type}`;
+      markerEl.style.left = `${left}px`;
+      markerEl.style.top = `${top}px`;
       if (marker.title) {
-        markerEl.title = marker.title
+        markerEl.title = marker.title;
       }
 
       if (marker.label) {
-        const label = document.createElement("span")
-        label.className = "osm-marker__label"
-        label.textContent = marker.label
-        markerEl.appendChild(label)
+        const label = document.createElement("span");
+        label.className = "osm-marker__label";
+        label.textContent = marker.label;
+        markerEl.appendChild(label);
       }
 
-      this.markerLayer.appendChild(markerEl)
-    })
+      this.markerLayer.appendChild(markerEl);
+    });
   }
 }
 
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
-const clampZoom = value => clamp(Math.round(value), MIN_ZOOM, MAX_ZOOM)
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const clampZoom = (value) => clamp(Math.round(value), MIN_ZOOM, MAX_ZOOM);
 
-const clampLatLng = coords => {
-  if (!coords) return null
+const clampLatLng = (coords) => {
+  if (!coords) return null;
   return {
     lat: clamp(coords.lat, MIN_LAT, MAX_LAT),
     lng: normalizeLng(coords.lng),
-  }
-}
+  };
+};
 
-const normalizeLng = lng => {
-  const normalized = ((lng + 180) % 360 + 360) % 360 - 180
-  return Number.isFinite(normalized) ? normalized : 0
-}
+const normalizeLng = (lng) => {
+  const normalized = ((((lng + 180) % 360) + 360) % 360) - 180;
+  return Number.isFinite(normalized) ? normalized : 0;
+};
 
 const latLngToPoint = (lat, lng, zoom) => {
-  const clampedLat = clamp(lat, MIN_LAT, MAX_LAT)
-  const latRad = (clampedLat * Math.PI) / 180
-  const sinLat = Math.sin(latRad)
-  const scale = TILE_SIZE * 2 ** zoom
+  const clampedLat = clamp(lat, MIN_LAT, MAX_LAT);
+  const latRad = (clampedLat * Math.PI) / 180;
+  const sinLat = Math.sin(latRad);
+  const scale = TILE_SIZE * 2 ** zoom;
 
-  const x = ((normalizeLng(lng) + 180) / 360) * scale
-  const y = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale
+  const x = ((normalizeLng(lng) + 180) / 360) * scale;
+  const y =
+    (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale;
 
-  return {x, y}
-}
+  return { x, y };
+};
 
 const pointToLatLng = (x, y, zoom) => {
-  const scale = TILE_SIZE * 2 ** zoom
-  const lng = (x / scale) * 360 - 180
-  const n = Math.PI - (2 * Math.PI * y) / scale
-  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+  const scale = TILE_SIZE * 2 ** zoom;
+  const lng = (x / scale) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * y) / scale;
+  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 
   return {
     lat: clamp(lat, MIN_LAT, MAX_LAT),
     lng: normalizeLng(lng),
-  }
-}
+  };
+};
 
 const wrapTileIndex = (value, zoom) => {
-  const max = 2 ** zoom
-  return ((value % max) + max) % max
-}
+  const max = 2 ** zoom;
+  return ((value % max) + max) % max;
+};
 
-const tileUrl = (zoom, x, y) => `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`
+const tileUrl = (zoom, x, y) =>
+  `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
 
 const parseLatLng = (latValue, lngValue) => {
-  const lat = parseNumber(latValue)
-  const lng = parseNumber(lngValue)
-  if (lat === null || lng === null) return null
-  return {lat, lng}
-}
+  const lat = parseNumber(latValue);
+  const lng = parseNumber(lngValue);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
+};
 
 const parseZoom = (value, fallback) => {
-  const parsed = parseNumber(value)
-  return parsed === null ? fallback : clampZoom(parsed)
-}
+  const parsed = parseNumber(value);
+  return parsed === null ? fallback : clampZoom(parsed);
+};
 
 const parseBoolean = (value, fallback) => {
-  if (value === undefined) return fallback
-  if (value === "false" || value === "0") return false
-  if (value === "true" || value === "1") return true
-  return fallback
-}
+  if (value === undefined) return fallback;
+  if (value === "false" || value === "0") return false;
+  if (value === "true" || value === "1") return true;
+  return fallback;
+};
 
-const parseNumber = value => {
-  if (typeof value === "number" && Number.isFinite(value)) return value
+const parseNumber = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const parsed = Number.parseFloat(value)
-    return Number.isFinite(parsed) ? parsed : null
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  return null
-}
+  return null;
+};
 
-const parseGuesses = value =>
-  parseJson(value).map(guess => ({
+const parseGuesses = (value) =>
+  parseJson(value).map((guess) => ({
     ...guess,
     lat: parseNumber(guess.lat),
     lng: parseNumber(guess.lng),
-  }))
+  }));
 
-const isFiniteLatLng = coords => coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)
+const isFiniteLatLng = (coords) =>
+  coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng);
 
 const hooks = {
   ...colocatedHooks,
 
   WorldMap: {
     mounted() {
-      const options = this.extractOptions()
+      const options = this.extractOptions();
       if (options.zoom === undefined) {
-        options.zoom = 2
+        options.zoom = 2;
       }
-      this.map = new OSMView(this.el, options)
-      this.map.setSelectHandler(coords => {
+      this.map = new OSMView(this.el, options);
+      this.map.setSelectHandler((coords) => {
         if (this.map.mode === "submission") {
-          this.pushEvent("set_submission_location", coords)
+          this.pushEvent("set_submission_location", coords);
         } else if (this.map.mode === "guess") {
-          this.pushEvent("set_guess_location", coords)
+          this.pushEvent("set_guess_location", coords);
         }
-      })
+      });
     },
 
     updated() {
-      if (!this.map) return
-      this.map.update(this.extractOptions())
+      if (!this.map) return;
+      this.map.update(this.extractOptions());
     },
 
     destroyed() {
       if (this.map) {
-        this.map.destroy()
-        this.map = null
+        this.map.destroy();
+        this.map = null;
       }
     },
 
     extractOptions() {
-      const dataset = this.el.dataset
-      const marker = parseLatLng(dataset.markerLat, dataset.markerLng)
-      const actual = parseLatLng(dataset.actualLat, dataset.actualLng)
-      const center = parseLatLng(dataset.centerLat, dataset.centerLng)
-      const zoom = dataset.zoom === undefined ? undefined : parseZoom(dataset.zoom, 2)
+      const dataset = this.el.dataset;
+      const marker = parseLatLng(dataset.markerLat, dataset.markerLng);
+      const actual = parseLatLng(dataset.actualLat, dataset.actualLng);
+      const center = parseLatLng(dataset.centerLat, dataset.centerLng);
+      const zoom =
+        dataset.zoom === undefined ? undefined : parseZoom(dataset.zoom, 2);
       const controls =
         dataset.controls === undefined
           ? undefined
-          : parseBoolean(dataset.controls, true)
+          : parseBoolean(dataset.controls, true);
 
       return {
         mode: dataset.mode || "submission",
@@ -591,41 +664,43 @@ const hooks = {
         center,
         zoom,
         controls,
-      }
+      };
     },
   },
-}
+};
 
-const parseJson = value => {
-  if (!value) return []
+const parseJson = (value) => {
+  if (!value) return [];
   try {
-    return JSON.parse(value)
+    return JSON.parse(value);
   } catch (error) {
-    console.warn("Failed to parse JSON payload", error)
-    return []
+    console.warn("Failed to parse JSON payload", error);
+    return [];
   }
-}
+};
 
-const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+const csrfToken = document
+  .querySelector("meta[name='csrf-token']")
+  .getAttribute("content");
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken},
+  params: { _csrf_token: csrfToken },
   hooks,
-})
+});
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
+window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
+window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 
 // connect if there are any LiveViews on the page
-liveSocket.connect()
+liveSocket.connect();
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
 // >> liveSocket.disableLatencySim()
-window.liveSocket = liveSocket
+window.liveSocket = liveSocket;
 
 // The lines below enable quality of life phoenix_live_reload
 // development features:
@@ -634,30 +709,37 @@ window.liveSocket = liveSocket
 //     2. click on elements to jump to their definitions in your code editor
 //
 if (process.env.NODE_ENV === "development") {
-  window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
-    // Enable server log streaming to client.
-    // Disable with reloader.disableServerLogs()
-    reloader.enableServerLogs()
+  window.addEventListener(
+    "phx:live_reload:attached",
+    ({ detail: reloader }) => {
+      // Enable server log streaming to client.
+      // Disable with reloader.disableServerLogs()
+      reloader.enableServerLogs();
 
-    // Open configured PLUG_EDITOR at file:line of the clicked element's HEEx component
-    //
-    //   * click with "c" key pressed to open at caller location
-    //   * click with "d" key pressed to open at function component definition location
-    let keyDown
-    window.addEventListener("keydown", e => keyDown = e.key)
-    window.addEventListener("keyup", e => keyDown = null)
-    window.addEventListener("click", e => {
-      if(keyDown === "c"){
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        reloader.openEditorAtCaller(e.target)
-      } else if(keyDown === "d"){
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        reloader.openEditorAtDef(e.target)
-      }
-    }, true)
+      // Open configured PLUG_EDITOR at file:line of the clicked element's HEEx component
+      //
+      //   * click with "c" key pressed to open at caller location
+      //   * click with "d" key pressed to open at function component definition location
+      let keyDown;
+      window.addEventListener("keydown", (e) => (keyDown = e.key));
+      window.addEventListener("keyup", (e) => (keyDown = null));
+      window.addEventListener(
+        "click",
+        (e) => {
+          if (keyDown === "c") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            reloader.openEditorAtCaller(e.target);
+          } else if (keyDown === "d") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            reloader.openEditorAtDef(e.target);
+          }
+        },
+        true,
+      );
 
-    window.liveReloader = reloader
-  })
+      window.liveReloader = reloader;
+    },
+  );
 }
