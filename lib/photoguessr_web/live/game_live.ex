@@ -647,6 +647,7 @@ end
           lat: socket.assigns.submission_location.lat,
           lng: socket.assigns.submission_location.lng
         }
+        IO.puts("Submission: #{inspect(submission)}")
 
         case GameServer.add_submission(socket.assigns.player_id, submission) do
           {:ok, view} ->
@@ -796,6 +797,7 @@ end
   defp consume_photo(socket) do
     case consume_uploaded_entries(socket, :photo, fn %{path: path}, entry ->
            dest = uploaded_file_destination(entry)
+           IO.puts(dest)
            File.mkdir_p!(Path.dirname(dest))
            File.cp!(path, dest)
 
