@@ -31,6 +31,8 @@ const MAX_LAT = 85.05112878;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 18;
 const DEFAULT_CENTER = { lat: 20, lng: 0 };
+const PLAYER_NAME_COOKIE = "_photoguessr_player_name";
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 class OSMView {
   constructor(element, options = {}) {
@@ -691,6 +693,14 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: { _csrf_token: csrfToken },
   hooks,
+});
+
+liveSocket.on("player-name:updated", ({ name }) => {
+  if (typeof name !== "string") return;
+  const trimmed = name.trim();
+  if (trimmed === "") return;
+  const encoded = encodeURIComponent(trimmed);
+  document.cookie = `${PLAYER_NAME_COOKIE}=${encoded};path=/;max-age=${ONE_YEAR_SECONDS};SameSite=Lax`;
 });
 
 // Show progress bar on live navigation and form submits

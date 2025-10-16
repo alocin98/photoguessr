@@ -25,6 +25,7 @@ defmodule PhotoguessrWeb.GameLive do
       |> assign(:submission_location, nil)
       |> assign(:show_admin_modal, false)
       |> assign(:guess_error, nil)
+      |> assign(:profile_form, profile_form(player_name))
       |> assign_new(:submission_form, fn -> to_form(%{}, as: :submission) end)
       |> assign_new(:admin_form, fn -> to_form(%{}, as: :admin) end)
       |> allow_upload(:photo,
@@ -143,6 +144,53 @@ defmodule PhotoguessrWeb.GameLive do
                     <.icon name="hero-user" class="size-4" /> Host: {admin_name(@game)}
                   </span>
                 <% end %>
+              </div>
+              <div
+                :if={@game.stage == :lobby}
+                class="rounded-3xl border border-slate-700/70 bg-slate-800/60 p-6 shadow-inner shadow-slate-900/20 transition hover:border-slate-600/70"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">
+                      Customize identity
+                    </p>
+                    <p class="mt-1 text-sm text-slate-300">
+                      Pick a memorable display name before the match goes live.
+                    </p>
+                  </div>
+                  <span class="inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white/80">
+                    <.icon name="hero-pencil-square" class="size-5" />
+                  </span>
+                </div>
+
+                <.form
+                  for={@profile_form}
+                  id="player-name-form"
+                  phx-submit="update_player_name"
+                  class="mt-4 space-y-3"
+                >
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                    <div class="w-full sm:flex-1">
+                      <.input
+                        field={@profile_form[:name]}
+                        type="text"
+                        placeholder="Stellar Voyager"
+                        autocomplete="name"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      class="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 hover:bg-emerald-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                      phx-disable-with="Updating..."
+                      aria-label="Update display name"
+                    >
+                      <.icon name="hero-pencil" class="size-4" /> Save name
+                    </button>
+                  </div>
+                  <p class="text-xs text-slate-400">
+                    Lobby players see updates instantly — choose something your friends recognize.
+                  </p>
+                </.form>
               </div>
             </div>
 
@@ -610,6 +658,79 @@ defmodule PhotoguessrWeb.GameLive do
   end
 
   @impl true
+  def handle_event("update_player_name", %{"profile" => %{"name" => name}}, socket) do
+    attempted = if is_binary(name), do: name, else: ""
+    trimmed = String.trim(attempted)
+
+    cond do
+      trimmed == "" ->
+        {:noreply,
+         assign(
+           socket,
+           :profile_form,
+           profile_form_with_error(attempted, "Enter a display name before saving.")
+         )}
+
+      String.length(trimmed) > 40 ->
+        {:noreply,
+         assign(
+           socket,
+           :profile_form,
+           profile_form_with_error(attempted, "Keep your name under 40 characters.")
+         )}
+
+      true ->
+        case GameServer.rename_player(socket.assigns.player_id, trimmed) do
+          {:ok, view} ->
+            {:noreply,
+             socket
+             |> assign(:player_name, trimmed)
+             |> assign(:game, view)
+             |> assign(:profile_form, profile_form(trimmed))
+             |> push_event("player-name:updated", %{name: trimmed})
+             |> put_flash(:info, "Display name updated.")}
+
+          {:error, :game_in_progress} ->
+            {:noreply,
+             socket
+             |> assign(:profile_form, profile_form(socket.assigns.player_name))
+             |> put_flash(:error, "Names can only change before the match begins.")}
+
+          {:error, :unknown_player} ->
+            {:noreply,
+             socket
+             |> assign(:profile_form, profile_form(socket.assigns.player_name))
+             |> put_flash(:error, "We could not verify your session. Refresh and try again.")}
+
+          {:error, :name_blank} ->
+            {:noreply,
+             assign(
+               socket,
+               :profile_form,
+               profile_form_with_error(attempted, "Enter a display name before saving.")
+             )}
+
+          {:error, :name_too_long} ->
+            {:noreply,
+             assign(
+               socket,
+               :profile_form,
+               profile_form_with_error(attempted, "Keep your name under 40 characters.")
+             )}
+
+          {:error, _reason} ->
+            {:noreply,
+             socket
+             |> assign(:profile_form, profile_form(attempted))
+             |> put_flash(:error, "We could not update your name right now.")}
+        end
+    end
+  end
+
+  def handle_event("update_player_name", _params, socket) do
+    {:noreply, assign(socket, :profile_form, profile_form(socket.assigns.player_name))}
+  end
+
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
     {:noreply, cancel_upload(socket, :photo, ref)}
   end
@@ -635,39 +756,6 @@ defmodule PhotoguessrWeb.GameLive do
 
       {:none, socket} ->
         handle_ready_submission(socket)
-    end
-  end
-
-  defp handle_ready_submission(socket) do
-    case consume_photo(socket) do
-      {:ok, filename, photo_url} ->
-        submission = %{
-          filename: filename,
-          photo_url: photo_url,
-          lat: socket.assigns.submission_location.lat,
-          lng: socket.assigns.submission_location.lng
-        }
-
-        IO.puts("Submission: #{inspect(submission)}")
-
-        case GameServer.add_submission(socket.assigns.player_id, submission) do
-          {:ok, view} ->
-            {:noreply,
-             socket
-             |> assign(:game, view)
-             |> assign(:submission_location, nil)
-             |> assign(:submission_form, to_form(%{}, as: :submission))
-             |> put_flash(:info, "Photo added to the lobby rounds.")}
-
-          {:error, reason} ->
-            {:noreply,
-             socket
-             |> assign(:game, socket.assigns.game)
-             |> put_flash(:error, submission_error_message(reason))}
-        end
-
-      {:error, message} ->
-        {:noreply, put_flash(socket, :error, message)}
     end
   end
 
@@ -781,6 +869,15 @@ defmodule PhotoguessrWeb.GameLive do
     :ok
   end
 
+  defp profile_form(name, opts \\ []) do
+    value = if is_binary(name), do: name, else: ""
+    to_form(%{"name" => value}, Keyword.merge([as: :profile], opts))
+  end
+
+  defp profile_form_with_error(name, message) do
+    profile_form(name, errors: [name: {message, []}], action: :validate)
+  end
+
   defp refresh_game(socket) do
     case GameServer.view_for(socket.assigns.player_id) do
       {:ok, view} -> assign(socket, :game, view)
@@ -792,6 +889,39 @@ defmodule PhotoguessrWeb.GameLive do
     case location do
       %{^key => value} when is_number(value) -> value
       _ -> default
+    end
+  end
+
+  defp handle_ready_submission(socket) do
+    case consume_photo(socket) do
+      {:ok, filename, photo_url} ->
+        submission = %{
+          filename: filename,
+          photo_url: photo_url,
+          lat: socket.assigns.submission_location.lat,
+          lng: socket.assigns.submission_location.lng
+        }
+
+        IO.puts("Submission: #{inspect(submission)}")
+
+        case GameServer.add_submission(socket.assigns.player_id, submission) do
+          {:ok, view} ->
+            {:noreply,
+             socket
+             |> assign(:game, view)
+             |> assign(:submission_location, nil)
+             |> assign(:submission_form, to_form(%{}, as: :submission))
+             |> put_flash(:info, "Photo added to the lobby rounds.")}
+
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> assign(:game, socket.assigns.game)
+             |> put_flash(:error, submission_error_message(reason))}
+        end
+
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
     end
   end
 

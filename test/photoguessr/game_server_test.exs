@@ -98,6 +98,51 @@ defmodule Photoguessr.GameServerTest do
              })
   end
 
+  test "renames a player while in the lobby" do
+    {:ok, original_view} = GameServer.join("alpha", "Atlas Voyager")
+    assert Enum.any?(original_view.scoreboard, &match?(%{id: "alpha", name: "Atlas Voyager"}, &1))
+
+    assert {:ok, updated_view} = GameServer.rename_player("alpha", "Aurora Trail")
+
+    assert updated_view.stage == :lobby
+
+    assert Enum.any?(updated_view.scoreboard, fn entry ->
+             entry.id == "alpha" and entry.name == "Aurora Trail"
+           end)
+
+    {:ok, refreshed} = GameServer.view_for("alpha")
+
+    assert Enum.any?(refreshed.scoreboard, fn entry ->
+             entry.id == "alpha" and entry.name == "Aurora Trail"
+           end)
+  end
+
+  test "does not allow renaming once a round has started" do
+    {:ok, _} = GameServer.join("alpha", "Host Player")
+
+    {:ok, _} =
+      GameServer.add_submission("alpha", %{
+        filename: "city.png",
+        photo_url: @photo_stub,
+        lat: 0.0,
+        lng: 0.0
+      })
+
+    assert :ok = GameServer.become_admin("alpha")
+    assert :ok = GameServer.start_game("alpha")
+
+    assert {:error, :game_in_progress} = GameServer.rename_player("alpha", "Even Cooler Host")
+  end
+
+  test "validates player names" do
+    {:ok, _} = GameServer.join("alpha", "Atlas Voyager")
+
+    assert {:error, :name_blank} = GameServer.rename_player("alpha", "   ")
+
+    long_name = String.duplicate("A", 41)
+    assert {:error, :name_too_long} = GameServer.rename_player("alpha", long_name)
+  end
+
   defp current_round_id do
     state = :sys.get_state(GameServer)
     index = state.active_round_index || 0

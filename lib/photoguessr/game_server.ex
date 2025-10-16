@@ -47,6 +47,13 @@ defmodule Photoguessr.GameServer do
   end
 
   @doc """
+  Updates a player's display name while the lobby is active.
+  """
+  def rename_player(player_id, player_name) do
+    GenServer.call(__MODULE__, {:rename_player, player_id, player_name})
+  end
+
+  @doc """
   Marks the requesting player as the admin.
   """
   def become_admin(player_id) do
@@ -237,6 +244,38 @@ defmodule Photoguessr.GameServer do
 
   def handle_call({:reset, _player_id}, _from, state) do
     {:reply, {:error, :not_admin}, state}
+  end
+
+  def handle_call({:rename_player, player_id, player_name}, _from, %{stage: :lobby} = state) do
+    with {:ok, normalized_name} <- normalize_player_name(player_name),
+         {:ok, player} <- Map.fetch(state.players, player_id) do
+      now = DateTime.utc_now()
+
+      players =
+        Map.put(
+          state.players,
+          player_id,
+          Map.merge(player, %{name: normalized_name, last_seen_at: now})
+        )
+
+      new_state =
+        state
+        |> Map.put(:players, players)
+        |> bump_version()
+
+      broadcast_change(new_state)
+      {:reply, {:ok, view(new_state, player_id)}, new_state}
+    else
+      :error ->
+        {:reply, {:error, :unknown_player}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:rename_player, _player_id, _player_name}, _from, state) do
+    {:reply, {:error, :game_in_progress}, state}
   end
 
   @impl true
@@ -730,4 +769,16 @@ defmodule Photoguessr.GameServer do
   defp broadcast_change(state) do
     Phoenix.PubSub.broadcast(Photoguessr.PubSub, @topic, {:game_updated, state.version})
   end
+
+  defp normalize_player_name(name) when is_binary(name) do
+    trimmed = String.trim(name)
+
+    cond do
+      trimmed == "" -> {:error, :name_blank}
+      String.length(trimmed) > 40 -> {:error, :name_too_long}
+      true -> {:ok, trimmed}
+    end
+  end
+
+  defp normalize_player_name(_), do: {:error, :invalid_name}
 end
