@@ -29,7 +29,7 @@ defmodule PhotoguessrWeb.GameLive do
       |> assign_new(:submission_form, fn -> to_form(%{}, as: :submission) end)
       |> assign_new(:admin_form, fn -> to_form(%{}, as: :admin) end)
       |> allow_upload(:photo,
-        accept: ~w(image/jpeg image/png image/webp image/heic image/heif),
+        accept: ~w(image/jpeg image/png image/webp),
         max_entries: 1,
         max_file_size: 10_000_000,
         auto_upload: true
